@@ -22,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import android.os.Build
 
 class MainActivity : ComponentActivity() {
 
@@ -29,14 +30,22 @@ class MainActivity : ComponentActivity() {
     private var showRationaleDialog by mutableStateOf(false)
 
     //creating our list of requested permissions
-    @SuppressLint("InlinedApi")
-    private val requiredPermissions = arrayOf(
-        Manifest.permission.ANSWER_PHONE_CALLS,
-        Manifest.permission.READ_PHONE_STATE,
-        Manifest.permission.READ_CALL_LOG
-    )
+    private val requiredPermissions: Array<String>
+        get(){
+            val permissions = mutableListOf(
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.ANSWER_PHONE_CALLS,
+            Manifest.permission.READ_PHONE_NUMBERS,
+            Manifest.permission.SEND_SMS,
+        )
 
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU){
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
+        return permissions.toTypedArray()
+    }
     //request handler - waits for users response
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -133,7 +142,10 @@ fun RationaleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {Text("Permission Required")},
-        text = {Text("This app needs phone permissions to auto-answer calls.")},
+        text = {Text("This app needs permissions to:\n" +
+                "• Answer calls automatically\n" +
+                "• Send SMS appointment confirmations\n" +
+                "• Show service status in notifications")},
         confirmButton = {
             TextButton(onClick = onConfirm){
                 Text("Grant")
