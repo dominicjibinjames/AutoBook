@@ -50,14 +50,6 @@
             </intent-filter>
         </activity>
 
-        <!--for receiving incoming calls-->
-        <receiver android:name=".receiver.CallReceiver"
-                  android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.PHONE_STATE"/>
-            </intent-filter>
-        </receiver>
-
         <!--for accept and reject the incoming call-->
         <service
                 android:name=".service.MyInCallService"
