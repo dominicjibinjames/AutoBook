@@ -7,9 +7,36 @@ import android.telecom.InCallService
 import android.telecom.VideoProfile
 import android.telephony.SmsManager
 import android.util.Log
+import com.example.appointmentmanager.data.AppDatabase
+import com.example.appointmentmanager.data.CallRecord
+import com.example.appointmentmanager.data.CallRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
+
+
+
 
 
 class MyInCallService: InCallService() {
+
+    private lateinit var database: AppDatabase
+    private lateinit var repository: CallRepository
+
+    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+
+    override fun onCreate() {
+        super.onCreate()
+
+        //initialize database and repository
+        database = AppDatabase.getDatabase(applicationContext)
+        repository = CallRepository(database.callDao())
+
+        Log.d("MyInCallService", "Database initialized")
+    }
 
     override fun onCallAdded(call: Call?) {
         // Called when a new call is detected
@@ -55,22 +82,54 @@ class MyInCallService: InCallService() {
         val phoneNumber = call?.details?.handle?.schemeSpecificPart
 
         if(phoneNumber !=null){
-            sendSMS(phoneNumber, "Your appointment is booked at 2pm tomorrow")
-            Log.d("MyInCallService", "SMS sent to: $phoneNumber")
+
+            var smsSuccess = false
+            try {
+                sendSMS(phoneNumber, "Your appointment is booked at 2pm tomorrow")
+                smsSuccess = true
+                Log.d("MyInCallService", "SMS sent to: $phoneNumber")
+            }
+            catch (error: Exception){
+                smsSuccess = false  // SMS failed
+                Log.e("MyInCallService", "SMS failed: ${error.message}")
+            }
+
+            //Save to database
+            saveCallToDatabase(phoneNumber, smsSuccess)
         }
     }
 
     private fun sendSMS(phoneNumber: String, message: String){
-        try {
-            //sms manager service
             val smsManager = getSystemService(SmsManager::class.java)
             smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+    }
 
+    private fun saveCallToDatabase(phoneNumber: String, smsSuccess: Boolean){
+        serviceScope.launch{
+            try {
+                val callRecord = CallRecord(
+                    phoneNumber = phoneNumber,
+                    timestamp = System.currentTimeMillis(),
+                    smsSent = smsSuccess
+                )
 
-        }catch (e: Exception) {
-            // failed to send sms
-            Log.e("MyInCallService", "Failed to send SMS", e)
+                repository.insertCall(callRecord)
+
+                Log.d("MyInCallService", "Call saved to database: $phoneNumber, SMS: $smsSuccess")
+
+            }catch (error: Exception){
+                Log.e("MyInCallService", "Failed to save call to database",error)
+            }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        // Cancel all running coroutines
+        serviceScope.cancel()
+
+        Log.d("MyInCallService", "Service destroyed, scope cancelled")
     }
 
 }

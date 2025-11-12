@@ -29,25 +29,38 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.appointmentmanager.data.AppDatabase
 import com.example.appointmentmanager.data.CallRecord
+import com.example.appointmentmanager.data.CallRepository
 import com.example.appointmentmanager.ui.theme.AppointmentManagerTheme
+import com.example.appointmentmanager.viewModel.CallViewModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-
 class MainActivity : ComponentActivity() {
 
 
+    //for showing dialog for first denial of permissions
     private var showRationaleDialog by mutableStateOf(false)
 
-    //creating our list of requested permissions
+    //for Database viewModel
+    private lateinit var viewModel: CallViewModel
+
+
+
+
+    //PERMISSIONS
+    //Creating our list of requested permissions
     private val requiredPermissions: Array<String>
         get(){
             val permissions = mutableListOf(
@@ -64,6 +77,8 @@ class MainActivity : ComponentActivity() {
 
         return permissions.toTypedArray()
     }
+
+
     //request handler - waits for users response
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -87,6 +102,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+
     // Helper function to check if we already have all permissions
     private fun hasAllPermissions(): Boolean{
         return requiredPermissions.all { permission ->
@@ -97,11 +114,14 @@ class MainActivity : ComponentActivity() {
 
 
 
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        //check for permissions after onCreate runs
+        //PERMISSIONS
+        //Check for permissions after onCreate runs
         if(hasAllPermissions()){
             Toast.makeText(this, "Welcome!", Toast.LENGTH_SHORT).show()
         }
@@ -110,17 +130,32 @@ class MainActivity : ComponentActivity() {
         }
 
 
+
+        //FOR DATABASE
+        //create database instance
+        val database = AppDatabase.getDatabase(applicationContext)
+        //create repo
+        val repository = CallRepository(database.callDao())
+        //create viewmodel
+        viewModel = CallViewModel(repository)
+
+
+
+
         setContent {
             AppointmentManagerTheme {
+
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+
 
                     //showing call history screen
                     Column(modifier = Modifier.padding(innerPadding)
                     ){
-                        CallHistoryScreen(callRecord = getSampleCallRecords())
+                        CallHistoryScreen(callRecord = viewModel.calls)
                     }
 
 
+                    //PERMISSIONS
                     if(showRationaleDialog){
                         RationaleDialog(
                             onDismiss = {
@@ -140,6 +175,7 @@ class MainActivity : ComponentActivity() {
 
 
 
+//PERMISSIONS
 //for rationale dialog
 @Composable
 fun RationaleDialog(
@@ -169,18 +205,22 @@ fun RationaleDialog(
 
 //Call History Full Screen
 @Composable
-fun CallHistoryScreen(callRecord: List<CallRecord>){
-    Column(){
+fun CallHistoryScreen(callRecord: Flow<List<CallRecord>>){
+
+    //Convert Flow to State
+    val calls = callRecord.collectAsState(initial = emptyList())
+
+    Column(modifier = Modifier.fillMaxSize()){
         Text(
             text= "Call History",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier
                 .padding(horizontal = 16.dp)
-                .padding(top = 10.dp)
+                .padding(top = 20.dp, bottom = 10.dp)
         )
         LazyColumn{
-            items(callRecord.size) {record ->
-                CallHistoryItem(callRecord = callRecord[record])
+            items(calls.value.size) {record ->
+                CallHistoryItem(callRecord = calls.value[record])
 
             }
         }
@@ -295,6 +335,8 @@ fun CallHistoryItemPreview(){
 @Composable
 fun CallHistoryScreenPreview(){
     AppointmentManagerTheme{
-        CallHistoryScreen(callRecord = getSampleCallRecords())
+        // Create a Flow from sample data for preview
+        val sampleFlow = flowOf(getSampleCallRecords())
+        CallHistoryScreen(callRecord = sampleFlow)
     }
 }
