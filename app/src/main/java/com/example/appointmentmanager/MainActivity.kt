@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,7 +34,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.appointmentmanager.data.AppDatabase
@@ -46,6 +49,9 @@ import kotlinx.coroutines.flow.flowOf
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.foundation.lazy.items
+
 
 class MainActivity : ComponentActivity() {
 
@@ -210,18 +216,64 @@ fun CallHistoryScreen(callRecord: Flow<List<CallRecord>>){
     //Convert Flow to State
     val calls = callRecord.collectAsState(initial = emptyList())
 
-    Column(modifier = Modifier.fillMaxSize()){
-        Text(
-            text= "Call History",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .padding(top = 20.dp, bottom = 10.dp)
-        )
-        LazyColumn{
-            items(calls.value.size) {record ->
-                CallHistoryItem(callRecord = calls.value[record])
+    //Group calls by date
+    val groupedCalls = calls.value
+        .sortedByDescending { it.timestamp }
+        .groupBy { getDateString(it.timestamp) }
 
+    Column(modifier = Modifier.fillMaxSize()){
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 20.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ){
+            Text(
+                text= "Call History",
+                style = MaterialTheme.typography.headlineMedium,
+            )
+            Icon(
+                imageVector = Icons.Default.Email,
+                contentDescription = "Contract",
+                modifier = Modifier.size(40.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+
+        }
+
+        LazyColumn{
+
+            groupedCalls.forEach { (date, callsForDate) ->
+                item(key = "header_$date") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = date,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Total Calls: ${callsForDate.size}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                items(
+                    items = callsForDate,
+                    key = { call -> call.id }
+                ) { call ->
+                    CallHistoryItem(callRecord = call)
+
+                }
             }
         }
     }
@@ -290,25 +342,34 @@ fun formatTimestamp(timestamp: Long) : String{
     return sdf.format(Date(timestamp))
 }
 
+fun getDateString(timestamp: Long):String {
+    val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+    return sdf.format(Date(timestamp))
+}
+
 
 fun getSampleCallRecords(): List<CallRecord> {
     return listOf(
         CallRecord(
+            id = 1,
             phoneNumber = "+91 98765 43210",
             timestamp = System.currentTimeMillis() - 3600000,  // 1 hour ago
             smsSent = true
         ),
         CallRecord(
+            id = 2,
             phoneNumber = "+91 87654 32109",
             timestamp = System.currentTimeMillis() - 7200000,  // 2 hours ago
             smsSent = true
         ),
         CallRecord(
+            id = 3,
             phoneNumber = "+91 76543 21098",
             timestamp = System.currentTimeMillis() - 86400000,  // 1 day ago
             smsSent = false
         ),
         CallRecord(
+            id = 4,
             phoneNumber = "+91 65432 10987",
             timestamp = System.currentTimeMillis() - 172800000,  // 2 days ago
             smsSent = true
