@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import com.example.appointmentmanager.data.AppDatabase
 import com.example.appointmentmanager.data.CallRecord
 import com.example.appointmentmanager.data.CallRepository
+import com.example.appointmentmanager.data.GroupedCall
 import com.example.appointmentmanager.ui.theme.AppointmentManagerTheme
 import com.example.appointmentmanager.ui.theme.GaretFontFamily
 import com.example.appointmentmanager.viewModel.CallViewModel
@@ -361,9 +362,7 @@ fun CallHistoryScreen(callRecord: Flow<List<CallRecord>>){
     else
     {
         ///Group calls by date
-        val groupedCalls = calls.value
-            .sortedByDescending { it.timestamp }
-            .groupBy { getDateString(it.timestamp) }
+        val groupedCallsByDate = groupCallsByNumber(calls.value)
 
         Column(
             modifier = Modifier
@@ -373,7 +372,7 @@ fun CallHistoryScreen(callRecord: Flow<List<CallRecord>>){
 
             LazyColumn {
 
-                groupedCalls.forEach { (date, callsForDate) ->
+                groupedCallsByDate.forEach { (date, groupedCalls) ->
                     item(key = "header_$date") {
                         Row(
                             modifier = Modifier
@@ -388,7 +387,7 @@ fun CallHistoryScreen(callRecord: Flow<List<CallRecord>>){
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Total Calls: ${callsForDate.size}",
+                                text = "Total Calls: ${groupedCalls.size}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -396,10 +395,10 @@ fun CallHistoryScreen(callRecord: Flow<List<CallRecord>>){
                     }
 
                     items(
-                        items = callsForDate,
-                        key = { call -> call.id }
-                    ) { call ->
-                        CallHistoryItem(callRecord = call)
+                        items = groupedCalls,
+                        key = { groupedCall -> groupedCall.firstCallId }
+                    ) { groupedCall ->
+                        GroupedCallHistoryItem(groupedCall = groupedCall)
 
                     }
                 }
@@ -430,7 +429,7 @@ fun getAvatarIcon(phoneNumber: String): Int {
 
 //Call History Card
 @Composable
-fun CallHistoryItem(callRecord: CallRecord){
+fun GroupedCallHistoryItem(groupedCall: GroupedCall){
 
     val isDarkMode = isSystemInDarkTheme()
 
@@ -464,7 +463,7 @@ fun CallHistoryItem(callRecord: CallRecord){
                 contentAlignment = Alignment.Center
             ){
                 Image(
-                    painter = painterResource(getAvatarIcon(callRecord.phoneNumber)),
+                    painter = painterResource(getAvatarIcon(groupedCall.phoneNumber)),
                     contentDescription = "Profile Avatar",
                     modifier = Modifier
                         .size(60.dp)
@@ -481,14 +480,32 @@ fun CallHistoryItem(callRecord: CallRecord){
                 .weight(1f)
 
             ){
-                Text(
-                    text=callRecord.phoneNumber,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontFamily = GaretFontFamily,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ){
+                    Text(
+                        text = groupedCall.phoneNumber,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = GaretFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                Row(){
+                    if (groupedCall.callCount > 1) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "(${groupedCall.callCount})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = GaretFontFamily,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ){
                     Box(
                         modifier = Modifier
                             .size(15.dp)
@@ -508,7 +525,7 @@ fun CallHistoryItem(callRecord: CallRecord){
 
 
                     Text(
-                        text = formatTimestamp(callRecord.timestamp),
+                        text = formatTimestamp(groupedCall.lastCallTime),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -527,19 +544,19 @@ fun CallHistoryItem(callRecord: CallRecord){
                         .clip(CircleShape)
                         .border(
                             width = 2.dp,
-                            color = if (callRecord.smsSent) Color(0xFF4CAF50) else Color(0xFFE53935),
+                            color = if (groupedCall.smsSent) Color(0xFF4CAF50) else Color(0xFFE53935),
                             shape = CircleShape
                         )
                         .background(
-                            if (callRecord.smsSent) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
+                            if (groupedCall.smsSent) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
                         ),
                     contentAlignment = Alignment.Center
                 ){
                     Icon(
-                        imageVector = if (callRecord.smsSent) Icons.Default.Check else Icons.Default.Close,
-                        contentDescription = if (callRecord.smsSent) "Sent" else "Failed",
+                        imageVector = if (groupedCall.smsSent) Icons.Default.Check else Icons.Default.Close,
+                        contentDescription = if (groupedCall.smsSent) "Sent" else "Failed",
                         modifier = Modifier.size(18.dp),
-                        tint = if (callRecord.smsSent) Color(0xFF4CAF50) else Color(0xFFE53935)
+                        tint = if (groupedCall.smsSent) Color(0xFF4CAF50) else Color(0xFFE53935)
 
                     )
                 }
@@ -555,6 +572,8 @@ fun CallHistoryItem(callRecord: CallRecord){
     }
 }
 
+
+
 fun formatTimestamp(timestamp: Long) : String{
     val sdf = SimpleDateFormat("dd MMM, yyyy • hh:mm a", Locale.getDefault())
     return sdf.format(Date(timestamp))
@@ -566,45 +585,111 @@ fun getDateString(timestamp: Long):String {
 }
 
 
+fun groupCallsByNumber(calls: List<CallRecord>): Map<String, List<GroupedCall>>{
+    return calls
+        .sortedByDescending { it.timestamp }
+        .groupBy { getDateString(it.timestamp) }
+        .mapValues { (_, callsForDate) ->
+            callsForDate
+                .groupBy { it.phoneNumber }
+                .map{(phoneNumber, callsFromNumber) ->
+                    GroupedCall(
+                        phoneNumber = phoneNumber,
+                        callCount = callsFromNumber.size,
+                        lastCallTime = callsFromNumber.maxOf { it.timestamp },
+                        smsSent = callsFromNumber.last().smsSent,
+                        firstCallId = callsFromNumber.first().id
+                    )
+                }
+                .sortedByDescending { it.lastCallTime }
+        }
+}
+
+
 fun getSampleCallRecords(): List<CallRecord> {
+    val now = System.currentTimeMillis()
     return listOf(
+        // Same number called twice today
         CallRecord(
             id = 1,
-            phoneNumber = "91 87654 32109",
-            timestamp = System.currentTimeMillis() - 3600000,  // 1 hour ago
+            phoneNumber = "+17363868754",
+            timestamp = now - 600000,  // 10 minutes ago
             smsSent = true
         ),
         CallRecord(
             id = 2,
-            phoneNumber = "+91 87654 32109",
-            timestamp = System.currentTimeMillis() - 7200000,  // 2 hours ago
+            phoneNumber = "+17363868754",  // SAME NUMBER!
+            timestamp = now - 1200000,  // 20 minutes ago
             smsSent = true
         ),
+        // Different number called 3 times today
         CallRecord(
             id = 3,
-            phoneNumber = "+91 76543 21098",
-            timestamp = System.currentTimeMillis() - 86400000,  // 1 day ago
+            phoneNumber = "+14343538754",
+            timestamp = now - 1800000,  // 30 min ago
             smsSent = false
         ),
         CallRecord(
             id = 4,
-            phoneNumber = "+91 65432 10987",
-            timestamp = System.currentTimeMillis() - 172800000,  // 2 days ago
+            phoneNumber = "+14343538754",  // SAME NUMBER!
+            timestamp = now - 2400000,  // 40 min ago
+            smsSent = false
+        ),
+        CallRecord(
+            id = 5,
+            phoneNumber = "+14343538754",  // SAME NUMBER!
+            timestamp = now - 3000000,  // 50 min ago
+            smsSent = false
+        ),
+        // Single call today
+        CallRecord(
+            id = 6,
+            phoneNumber = "+19333538754",
+            timestamp = now - 7200000,  // 2 hours ago
+            smsSent = true
+        ),
+        // Yesterday - same first number
+        CallRecord(
+            id = 7,
+            phoneNumber = "+17363868754",  // Same as id=1,2 but different day
+            timestamp = now - 86400000,  // Yesterday
             smsSent = true
         )
     )
 }
 
 
-@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+
+@Preview(showBackground = true)
 @Composable
-fun CallHistoryItemPreview(){
-    // Apply your theme to this preview
+fun GroupedCallHistoryItemPreview(){
     AppointmentManagerTheme {
-        val sampleRecord = getSampleCallRecords()[0]
-        CallHistoryItem(callRecord = sampleRecord)
+        val sampleGroupedCall = GroupedCall(
+            phoneNumber = "+17363868754",
+            callCount = 2,
+            lastCallTime = System.currentTimeMillis(),
+            smsSent = true,
+            firstCallId = 1
+        )
+        GroupedCallHistoryItem(groupedCall = sampleGroupedCall)
     }
 }
+
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun GroupedCallHistoryItemDarkPreview(){
+    AppointmentManagerTheme {
+        val sampleGroupedCall = GroupedCall(
+            phoneNumber = "+14343538754",
+            callCount = 3,
+            lastCallTime = System.currentTimeMillis(),
+            smsSent = false,
+            firstCallId = 3
+        )
+        GroupedCallHistoryItem(groupedCall = sampleGroupedCall)
+    }
+}
+
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable

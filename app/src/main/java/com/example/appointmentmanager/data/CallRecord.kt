@@ -10,3 +10,11 @@ data class CallRecord(
     val timestamp: Long,
     val smsSent: Boolean,
 )
+
+data class GroupedCall(
+    val phoneNumber: String,
+    val callCount: Int,  // How many times this number called
+    val lastCallTime: Long,  // Most recent call timestamp
+    val smsSent: Boolean,  // SMS status of most recent call
+    val firstCallId: Int
+)
