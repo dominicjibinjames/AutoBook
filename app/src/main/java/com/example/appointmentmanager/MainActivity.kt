@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -65,6 +66,7 @@ import com.example.appointmentmanager.viewModel.CallViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
@@ -606,6 +608,8 @@ fun groupCallsByNumber(calls: List<CallRecord>): Map<String, List<GroupedCall>>{
 }
 
 
+
+
 fun getSampleCallRecords(): List<CallRecord> {
     val now = System.currentTimeMillis()
     return listOf(
@@ -656,6 +660,83 @@ fun getSampleCallRecords(): List<CallRecord> {
             smsSent = true
         )
     )
+}
+
+
+fun getNextWorkingDay(currentTimestamp: Long): Pair<Long, String>{
+    val calendar = Calendar.getInstance()
+    calendar.timeInMillis = currentTimestamp
+
+    calendar.add(Calendar.DAY_OF_MONTH, 1)
+
+    if(calendar.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY){
+        calendar.add(Calendar.DAY_OF_MONTH, 1)
+        Log.d("AutoBook", "Skipped Sunday, moved to Monday")
+    }
+
+    val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+    val dateString = sdf.format(calendar.time)
+
+    Log.d("AutoBook", "Next working day: $dateString")
+    return Pair(calendar.timeInMillis, dateString)
+}
+
+suspend fun assignAppointmentSlot(
+    phoneNumber: String,
+    callTimestamp: Long,
+    repository: CallRepository
+): Pair<String, String>{
+
+    val (workingDayTimestamp, workingDayDate) = getNextWorkingDay(callTimestamp)
+
+    //get all existing records from database
+    val allRecords = repository.getAllCallsSync()
+
+    //check if person already has a slot
+    val existingSlot = allRecords.firstOrNull {
+        it.phoneNumber == phoneNumber && it.appointmentDate == workingDayDate
+    }?.appointmentSlot
+
+    if (existingSlot != null) {
+        Log.d("AutoBook", "✓ Existing slot found for $phoneNumber on $workingDayDate: $existingSlot")
+        return Pair(workingDayDate, existingSlot)
+    }
+
+    //slots
+    val availableSlots = listOf(
+        "8-9am", "9-10am", "10-11am", "11-12pm",
+        "1-2pm", "2-3pm", "3-4pm"
+    )
+
+    for (slot in availableSlots){
+        val countInSlot = allRecords.count{
+            it.appointmentDate == workingDayDate && it.appointmentSlot == slot
+        }
+
+        if (countInSlot < 5){
+            Log.d("AutoBook", "✓ Assigned $phoneNumber to $workingDayDate at $slot (${countInSlot + 1}/5)")
+            return Pair(workingDayDate, slot)
+        }
+    }
+
+    Log.w("AutoBook", "⚠ All slots full for $workingDayDate - $phoneNumber on WAITLIST")
+    return Pair(workingDayDate, "WAITLIST")
+}
+
+
+fun generateAppointmentMessage(
+    appointmentDate: String,
+    appointmentSlot: String,
+    appointmentTimestamp: Long
+): String {
+    // Get day name (Monday, Tuesday, etc.)
+    val dayFormat = SimpleDateFormat("EEEE", Locale.getDefault())
+    val dayName = dayFormat.format(Date(appointmentTimestamp))
+
+    // Create message
+    val message = "You have an appointment on $dayName at $appointmentSlot"
+    Log.d("AutoBook", "Generated SMS: $message")
+    return message
 }
 
 

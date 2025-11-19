@@ -9,6 +9,10 @@ class CallRepository(private val callDao: CallDao) {
         return callDao.getAllCalls()
     }
 
+    suspend fun getAllCallsSync(): List<CallRecord> {
+        return callDao.getAllCallsSync()
+    }
+
     //save a new call
     suspend fun insertCall(callRecord: CallRecord){
         callDao.insertCall(callRecord)

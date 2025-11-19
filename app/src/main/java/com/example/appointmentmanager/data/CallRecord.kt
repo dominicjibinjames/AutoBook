@@ -9,6 +9,8 @@ data class CallRecord(
     val phoneNumber: String,
     val timestamp: Long,
     val smsSent: Boolean,
+    val appointmentDate: String? = null,
+    val appointmentSlot: String? = null
 )
 
 data class GroupedCall(

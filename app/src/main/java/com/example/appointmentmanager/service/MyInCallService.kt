@@ -7,17 +7,17 @@ import android.telecom.InCallService
 import android.telecom.VideoProfile
 import android.telephony.SmsManager
 import android.util.Log
+import com.example.appointmentmanager.assignAppointmentSlot
 import com.example.appointmentmanager.data.AppDatabase
 import com.example.appointmentmanager.data.CallRecord
 import com.example.appointmentmanager.data.CallRepository
+import com.example.appointmentmanager.generateAppointmentMessage
+import com.example.appointmentmanager.getNextWorkingDay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
-
-
-
+import kotlinx.coroutines.launch
 
 
 class MyInCallService: InCallService() {
@@ -83,40 +83,92 @@ class MyInCallService: InCallService() {
 
         if(phoneNumber !=null){
 
-            var smsSuccess = false
-            try {
-                sendSMS(phoneNumber, "Your appointment is booked at 2pm tomorrow")
-                smsSuccess = true
-                Log.d("MyInCallService", "SMS sent to: $phoneNumber")
-            }
-            catch (error: Exception){
-                smsSuccess = false  // SMS failed
-                Log.e("MyInCallService", "SMS failed: ${error.message}")
-            }
+            serviceScope.launch {
+                try {
+                    val currentTime = System.currentTimeMillis()
 
-            //Save to database
-            saveCallToDatabase(phoneNumber, smsSuccess)
+                    //assign appointment slot
+                    val(appointmentDate, appointmentSlot) = assignAppointmentSlot(
+                        phoneNumber = phoneNumber,
+                        callTimestamp = currentTime,
+                        repository = repository
+                    )
+                    Log.d("MyInCallService", "Slot assigned: $appointmentDate at $appointmentSlot")
+
+                    //get appointment timestamp for sms
+                    val(appointmentTimestamp, _) = getNextWorkingDay(currentTime)
+
+                    //generate sms
+                    val message = generateAppointmentMessage(
+                        appointmentDate = appointmentDate,
+                        appointmentSlot = appointmentSlot,
+                        appointmentTimestamp = appointmentTimestamp
+                    )
+
+                    Log.d("MyInCallService", "Message generated: $message")
+
+                    //send sms
+                    val smsSuccess = sendSMS(phoneNumber, message)
+
+                    saveCallToDatabase(
+                        phoneNumber = phoneNumber,
+                        smsSuccess = smsSuccess,
+                        appointmentDate = appointmentDate,
+                        appointmentSlot = appointmentSlot
+                    )
+
+                }catch (error: Exception) {
+                    Log.e("MyInCallService", "Error processing call: ${error.message}", error)
+
+                    //Save to database
+                    saveCallToDatabase(
+                        phoneNumber = phoneNumber,
+                        smsSuccess = false,
+                        appointmentDate = null,
+                        appointmentSlot = null
+                    )
+                }
+            }
         }
     }
 
-    private fun sendSMS(phoneNumber: String, message: String){
+    private fun sendSMS(phoneNumber: String, message: String): Boolean {
+        return try {
             val smsManager = getSystemService(SmsManager::class.java)
             smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+
+            Log.d("MyInCallService", "✓ SMS sent to $phoneNumber: $message")
+            true  // Success
+
+        } catch (error: Exception) {
+            Log.e("MyInCallService", "❌ SMS failed: ${error.message}", error)
+            false  // Failed
+        }
     }
 
-    private fun saveCallToDatabase(phoneNumber: String, smsSuccess: Boolean){
+
+    private fun saveCallToDatabase(
+        phoneNumber: String,
+        smsSuccess: Boolean,
+        appointmentDate: String? = null,
+        appointmentSlot: String? = null
+    ){
         serviceScope.launch{
             try {
                 val callRecord = CallRecord(
                     phoneNumber = phoneNumber,
                     timestamp = System.currentTimeMillis(),
-                    smsSent = smsSuccess
+                    smsSent = smsSuccess,
+                    appointmentDate = appointmentDate,
+                    appointmentSlot = appointmentSlot
                 )
 
                 repository.insertCall(callRecord)
 
-                Log.d("MyInCallService", "Call saved to database: $phoneNumber, SMS: $smsSuccess")
-
+                Log.d(
+                    "MyInCallService",
+                    "✓ Call saved: $phoneNumber, SMS: $smsSuccess, Slot: $appointmentSlot on $appointmentDate"
+                )
             }catch (error: Exception){
                 Log.e("MyInCallService", "Failed to save call to database",error)
             }
