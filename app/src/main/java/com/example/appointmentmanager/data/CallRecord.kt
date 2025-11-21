@@ -20,3 +20,17 @@ data class GroupedCall(
     val smsSent: Boolean,  // SMS status of most recent call
     val firstCallId: Int
 )
+
+
+// Represents a time slot with its appointments
+data class AppointmentSlot(
+    val slotTime: String,           // "8-9am"
+    val phoneNumbers: List<String>, // List of unique phone numbers
+    val capacity: Int = 5,          // Max people per slot
+    val count: Int = phoneNumbers.size  // Current occupancy
+) {
+    val isFull: Boolean get() = count >= capacity
+    val isEmpty: Boolean get() = count == 0
+    val percentage: Float get() = count.toFloat() / capacity.toFloat()
+}
+

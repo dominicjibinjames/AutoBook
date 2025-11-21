@@ -17,6 +17,9 @@ interface CallDao {
     @Query("SELECT * FROM call_records ORDER BY timestamp DESC")
     suspend fun getAllCallsSync(): List<CallRecord>
 
+    @Query("SELECT * FROM call_records WHERE appointmentDate = :date ORDER BY timestamp DESC")
+    fun getAppointmentsForDateFlow(date: String): Flow<List<CallRecord>>
+
     @Delete
     suspend fun deleteCall(callRecord: CallRecord)
 }

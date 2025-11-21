@@ -18,17 +18,21 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Phone
@@ -36,14 +40,19 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +66,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.appointmentmanager.data.AppDatabase
+import com.example.appointmentmanager.data.AppointmentSlot
 import com.example.appointmentmanager.data.CallRecord
 import com.example.appointmentmanager.data.CallRepository
 import com.example.appointmentmanager.data.GroupedCall
@@ -170,15 +180,48 @@ class MainActivity : ComponentActivity() {
         setContent {
             AppointmentManagerTheme {
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                var selectedTab by remember { mutableIntStateOf(0) }
+
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+
+                        NavigationBar{
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.Phone, contentDescription = "History")},
+                                label = {Text("History")},
+                                selected = selectedTab == 0,
+                                onClick = {selectedTab = 0}
+                            )
+                            NavigationBarItem(
+                                icon={
+                                    Icon(Icons.Default.CalendarToday, contentDescription = "Schedule")
+                                },
+                                label = {Text("Schedule")},
+                                selected = selectedTab == 1,
+                                onClick = {selectedTab = 1}
+                            )
+                        }
+
+                    }
+                    ) { innerPadding ->
 
 
                     //showing call history screen
                     Column(modifier = Modifier.padding(innerPadding)
                     ){
-                        CallHistoryScreen(callRecord = viewModel.calls)
+                        // NEW: Add test controls at the top
+                        when(selectedTab){
+                            0 -> {
+                                //History Tab
+                                CallHistoryScreen(callRecord = viewModel.calls)
+                            }
+                            1 -> {
+                                //Schedule Tab
+                                ScheduleScreen(viewModel = viewModel)
+                            }
+                        }
                     }
-
 
                     //PERMISSIONS
                     if(showRationaleDialog){
@@ -197,7 +240,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 
 
 //PERMISSIONS
@@ -575,6 +617,163 @@ fun GroupedCallHistoryItem(groupedCall: GroupedCall){
 }
 
 
+//Main Schedule Screen
+@Composable
+fun ScheduleScreen(viewModel: CallViewModel){
+    val slots by viewModel.appointmentSlots.collectAsState(initial = emptyList())
+
+    val tomorrowDate by viewModel.tomorrowDate.collectAsState()
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ){
+        ScheduleHeader(date = tomorrowDate)
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ){
+            items(slots) {slot ->
+                AppointmentSlotCard(slot = slot)
+            }
+        }
+    }
+}
+
+@Composable
+fun ScheduleHeader(date: String) {
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(top = 20.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Schedule",
+                style = MaterialTheme.typography.headlineMedium,
+                fontFamily = GaretFontFamily,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = date,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray
+            )
+        }
+    }
+}
+
+@Composable
+fun AppointmentSlotCard(slot: AppointmentSlot) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header: Slot time and count
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = slot.slotTime,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontFamily = GaretFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = "${slot.count}/${slot.capacity}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = when {
+                        slot.isFull -> Color(0xFFE53935)      // Red if full
+                        slot.isEmpty -> Color.Gray             // Gray if empty
+                        else -> Color(0xFF4CAF50)              // Green otherwise
+                    },
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Progress bar
+            LinearProgressIndicator(
+                progress = { slot.percentage },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = when {
+                    slot.isFull -> Color(0xFFE53935)          // Red
+                    slot.count >= 3 -> Color(0xFFFFA726)      // Orange
+                    else -> Color(0xFF4CAF50)                 // Green
+                },
+                trackColor = Color.LightGray.copy(alpha = 0.3f)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Phone numbers or empty state
+            if (slot.isEmpty) {
+                Text(
+                    text = "No appointments yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                // Show first 3 numbers, hide rest
+                val displayNumbers = if (isExpanded) {
+                    slot.phoneNumbers
+                } else {
+                    slot.phoneNumbers.take(3)
+                }
+
+                Column {
+                    displayNumbers.forEach { phoneNumber ->
+                        Text(
+                            text = phoneNumber,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+
+                    // "Show more" button if more than 3
+                    if (slot.count > 3) {
+                        TextButton(
+                            onClick = { isExpanded = !isExpanded }
+                        ) {
+                            Text(
+                                text = if (isExpanded) {
+                                    "Show less"
+                                } else {
+                                    "... +${slot.count - 3} more"
+                                },
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
 
 fun formatTimestamp(timestamp: Long) : String{
     val sdf = SimpleDateFormat("dd MMM, yyyy • hh:mm a", Locale.getDefault())
@@ -705,19 +904,26 @@ suspend fun assignAppointmentSlot(
     //slots
     val availableSlots = listOf(
         "8-9am", "9-10am", "10-11am", "11-12pm",
-        "1-2pm", "2-3pm", "3-4pm"
+        "12-1pm", "1-2pm", "2-3pm", "3-4pm"
     )
 
-    for (slot in availableSlots){
-        val countInSlot = allRecords.count{
-            it.appointmentDate == workingDayDate && it.appointmentSlot == slot
-        }
+    for (slot in availableSlots) {
+        // Count UNIQUE phone numbers in this slot
+        val countInSlot = allRecords
+            .filter {
+                it.appointmentDate == workingDayDate &&
+                        it.appointmentSlot == slot
+            }
+            .map { it.phoneNumber }      // Extract phone numbers
+            .distinct()                   // Get unique numbers only
+            .size                         // Count unique numbers
 
-        if (countInSlot < 5){
+        if (countInSlot < 5) {
             Log.d("AutoBook", "✓ Assigned $phoneNumber to $workingDayDate at $slot (${countInSlot + 1}/5)")
             return Pair(workingDayDate, slot)
         }
     }
+
 
     Log.w("AutoBook", "⚠ All slots full for $workingDayDate - $phoneNumber on WAITLIST")
     return Pair(workingDayDate, "WAITLIST")
@@ -790,3 +996,4 @@ fun EmptyCallHistoryStatePreview(){
         EmptyCallHistoryState()
     }
 }
+
