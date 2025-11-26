@@ -20,6 +20,10 @@ interface CallDao {
     @Query("SELECT * FROM call_records WHERE appointmentDate = :date ORDER BY timestamp DESC")
     fun getAppointmentsForDateFlow(date: String): Flow<List<CallRecord>>
 
+    @Query("DELETE FROM call_records WHERE phoneNumber = :phoneNumber AND appointmentDate = :date")
+    suspend fun deleteByPhoneNumberAndDate(phoneNumber: String, date: String)
+
+
     @Delete
     suspend fun deleteCall(callRecord: CallRecord)
 }

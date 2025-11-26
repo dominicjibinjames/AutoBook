@@ -30,7 +30,7 @@ class CallRepository(private val callDao: CallDao) {
 
                 val allSlots = listOf(
                     "8-9am", "9-10am", "10-11am", "11-12pm",
-                    "1-2pm", "2-3pm", "3-4pm"
+                    "12-1pm","1-2pm", "2-3pm", "3-4pm"
                 )
 
                 allSlots.map{ slotTime ->
@@ -45,4 +45,10 @@ class CallRepository(private val callDao: CallDao) {
                 }
             }
     }
+
+    // Delete specific appointment by phone number and date
+    suspend fun deleteAppointment(phoneNumber: String, appointmentDate: String) {
+        callDao.deleteByPhoneNumberAndDate(phoneNumber, appointmentDate)
+    }
+
 }

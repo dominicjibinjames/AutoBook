@@ -32,14 +32,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -210,6 +214,7 @@ class MainActivity : ComponentActivity() {
                     //showing call history screen
                     Column(modifier = Modifier.padding(innerPadding)
                     ){
+
                         // NEW: Add test controls at the top
                         when(selectedTab){
                             0 -> {
@@ -622,12 +627,19 @@ fun GroupedCallHistoryItem(groupedCall: GroupedCall){
 fun ScheduleScreen(viewModel: CallViewModel){
     val slots by viewModel.appointmentSlots.collectAsState(initial = emptyList())
 
-    val tomorrowDate by viewModel.tomorrowDate.collectAsState()
+    //Collect the selected date
+    val selectedDate by viewModel.selectedDate.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize()
     ){
-        ScheduleHeader(date = tomorrowDate)
+        ScheduleHeader(
+            date = selectedDate,
+            onPreviousDay = { viewModel.previousDay()},
+            onNextDay = { viewModel.nextDay()},
+            onToday = {viewModel.goToToday()},
+            onTomorrow = {viewModel.goToTomorrow()}
+        )
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -635,42 +647,107 @@ fun ScheduleScreen(viewModel: CallViewModel){
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ){
             items(slots) {slot ->
-                AppointmentSlotCard(slot = slot)
+                AppointmentSlotCard(
+                    slot = slot,
+                    selectedDate = selectedDate,
+                    onDeleteAppointment = { phoneNumber ->
+                        viewModel.deleteAppointment(phoneNumber, selectedDate)
+
+                    }
+                )
             }
         }
     }
 }
 
 @Composable
-fun ScheduleHeader(date: String) {
+fun ScheduleHeader(
+    date: String,
+    onPreviousDay: () -> Unit,
+    onNextDay: () -> Unit,
+    onToday: () -> Unit,
+    onTomorrow: () -> Unit
+) {
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(top = 20.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(top = 20.dp, bottom = 10.dp)
     ) {
-        Column {
-            Text(
-                text = "Schedule",
-                style = MaterialTheme.typography.headlineMedium,
-                fontFamily = GaretFontFamily,
-                fontWeight = FontWeight.Bold
-            )
+        Text(
+            text = "Schedule",
+            style = MaterialTheme.typography.headlineMedium,
+            fontFamily = GaretFontFamily,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ){
+            IconButton(onClick = onPreviousDay){
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Previous Day"
+                )
+            }
+
             Text(
                 text = date,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
             )
+
+            IconButton(onClick = onNextDay){
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "Next Day"
+                )
+            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ){
+            TextButton(
+                onClick = onToday,
+                modifier = Modifier.weight(1f)
+            ){
+                Text("Today")
+            }
+
+            TextButton(
+                onClick = onTomorrow,
+                modifier = Modifier.weight(1f)
+            ){
+                Text("Tomorrow")
+            }
+        }
+
+
+
     }
 }
 
 @Composable
-fun AppointmentSlotCard(slot: AppointmentSlot) {
+fun AppointmentSlotCard(
+    slot: AppointmentSlot,
+    selectedDate: String,
+    onDeleteAppointment: (String) -> Unit
+) {
     var isExpanded by remember { mutableStateOf(false) }
+
+    // State for delete confirmation dialog
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var phoneToDelete by remember { mutableStateOf("") }
+
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -743,11 +820,35 @@ fun AppointmentSlotCard(slot: AppointmentSlot) {
 
                 Column {
                     displayNumbers.forEach { phoneNumber ->
-                        Text(
-                            text = phoneNumber,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = phoneNumber,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+
+                            //Delete Button
+                            IconButton(
+                                onClick = {
+                                    phoneToDelete = phoneNumber
+                                    showDeleteDialog = true
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete Appointment",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
 
                     // "Show more" button if more than 3
@@ -769,6 +870,33 @@ fun AppointmentSlotCard(slot: AppointmentSlot) {
             }
         }
     }
+
+    if (showDeleteDialog){
+        AlertDialog(
+            onDismissRequest = {showDeleteDialog = false},
+            title = {Text("Delete Appointment")},
+            text = {
+                Text("Are you sure you want to delete the appointment for $phoneToDelete on $selectedDate?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteAppointment(phoneToDelete)
+                        showDeleteDialog = false
+                    }
+                ){
+                    Text("Delete", color = Color(0xFFE53935))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {showDeleteDialog = false}){
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+
 }
 
 

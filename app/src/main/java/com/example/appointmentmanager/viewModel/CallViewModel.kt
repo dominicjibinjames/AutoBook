@@ -6,10 +6,17 @@ import com.example.appointmentmanager.data.AppointmentSlot
 import com.example.appointmentmanager.data.CallRecord
 import com.example.appointmentmanager.data.CallRepository
 import com.example.appointmentmanager.getNextWorkingDay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class CallViewModel(private var repository: CallRepository) : ViewModel() {
 
@@ -31,19 +38,87 @@ class CallViewModel(private var repository: CallRepository) : ViewModel() {
     }
 
 
-    // For Schedule Screen
-    private val tomorrowDateValue: String
 
+    // For Schedule Screen
+
+    //Mutable Date
+    private val _selectedDate = MutableStateFlow("")
+    val selectedDate: StateFlow<String> = _selectedDate
+
+    //Timestamp for navigation
+    private val _selectedDateTimeStamp = MutableStateFlow(0L)
+
+
+    //start with tomorrow
     init {
-        val (_, dateString) = getNextWorkingDay(System.currentTimeMillis())
-        tomorrowDateValue = dateString
+        goToTomorrow()
     }
 
-    //expose tomorrow's date
-    val tomorrowDate: StateFlow<String> = MutableStateFlow(tomorrowDateValue)
-
-    //auto-update appointment slots
+    //Watch changing date
+    @OptIn(ExperimentalCoroutinesApi::class)
     val appointmentSlots: Flow<List<AppointmentSlot>> =
-        repository.getAppointmentSlotsFlow(tomorrowDateValue)
+        selectedDate.flatMapLatest { date ->
+
+            if (date.isEmpty()){
+                flowOf(emptyList())
+            }
+            else{
+                repository.getAppointmentSlotsFlow(date)
+            }
+        }
+
+    fun goToTomorrow(){
+        val(timestamp, dateString) = getNextWorkingDay(System.currentTimeMillis())
+        _selectedDateTimeStamp.value = timestamp
+        _selectedDate.value = dateString
+    }
+
+    fun goToToday(){
+        val calendar = Calendar.getInstance()
+        val timestamp = calendar.timeInMillis
+        val dateString = formatDate(calendar.time)
+
+        _selectedDateTimeStamp.value = timestamp
+        _selectedDate.value = dateString
+    }
+
+    fun nextDay(){
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = _selectedDateTimeStamp.value
+        calendar.add(Calendar.DAY_OF_MONTH, 1)
+
+        val timestamp = calendar.timeInMillis
+        val dateString = formatDate(calendar.time)
+
+        _selectedDateTimeStamp.value = timestamp
+        _selectedDate.value = dateString
+    }
+
+    // Go to previous day
+    fun previousDay() {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = _selectedDateTimeStamp.value
+        calendar.add(Calendar.DAY_OF_MONTH, -1)
+
+        val timestamp = calendar.timeInMillis
+        val dateString = formatDate(calendar.time)
+
+        _selectedDateTimeStamp.value = timestamp
+        _selectedDate.value = dateString
+    }
+
+    // Format date consistently
+    private fun formatDate(date: Date): String {
+        val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+        return sdf.format(date)
+    }
+
+    // Delete specific appointment
+    fun deleteAppointment(phoneNumber: String, appointmentDate: String) {
+        viewModelScope.launch {
+            repository.deleteAppointment(phoneNumber, appointmentDate)
+        }
+    }
+
 
 }
