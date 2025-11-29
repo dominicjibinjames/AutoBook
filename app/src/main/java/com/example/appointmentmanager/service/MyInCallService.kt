@@ -11,6 +11,7 @@ import com.example.appointmentmanager.assignAppointmentSlot
 import com.example.appointmentmanager.data.AppDatabase
 import com.example.appointmentmanager.data.CallRecord
 import com.example.appointmentmanager.data.CallRepository
+import com.example.appointmentmanager.data.SettingsManager
 import com.example.appointmentmanager.generateAppointmentMessage
 import com.example.appointmentmanager.getNextWorkingDay
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,7 @@ class MyInCallService: InCallService() {
 
     private lateinit var database: AppDatabase
     private lateinit var repository: CallRepository
+    private lateinit var settingsManager: SettingsManager
 
     private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -33,9 +35,10 @@ class MyInCallService: InCallService() {
 
         //initialize database and repository
         database = AppDatabase.getDatabase(applicationContext)
-        repository = CallRepository(database.callDao())
+        settingsManager = SettingsManager(applicationContext)
+        repository = CallRepository(database.callDao(), settingsManager)
 
-        Log.d("MyInCallService", "Database initialized")
+        Log.d("MyInCallService", "Database and repository initialized")
     }
 
     override fun onCallAdded(call: Call?) {
@@ -91,7 +94,8 @@ class MyInCallService: InCallService() {
                     val(appointmentDate, appointmentSlot) = assignAppointmentSlot(
                         phoneNumber = phoneNumber,
                         callTimestamp = currentTime,
-                        repository = repository
+                        repository = repository,
+                        context = applicationContext
                     )
                     Log.d("MyInCallService", "Slot assigned: $appointmentDate at $appointmentSlot")
 

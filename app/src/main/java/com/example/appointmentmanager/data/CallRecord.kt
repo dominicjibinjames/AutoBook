@@ -13,6 +13,14 @@ data class CallRecord(
     val appointmentSlot: String? = null
 )
 
+//for customizing the Appointment slot capacity
+@Entity(tableName = "slot_configurations")
+data class SlotConfiguration(
+    @PrimaryKey val slotTime: String,
+    val capacity: Int,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 data class GroupedCall(
     val phoneNumber: String,
     val callCount: Int,  // How many times this number called
@@ -20,7 +28,6 @@ data class GroupedCall(
     val smsSent: Boolean,  // SMS status of most recent call
     val firstCallId: Int
 )
-
 
 // Represents a time slot with its appointments
 data class AppointmentSlot(

@@ -11,9 +11,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,14 +35,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,6 +56,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,14 +66,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -74,11 +87,15 @@ import com.example.appointmentmanager.data.AppointmentSlot
 import com.example.appointmentmanager.data.CallRecord
 import com.example.appointmentmanager.data.CallRepository
 import com.example.appointmentmanager.data.GroupedCall
+import com.example.appointmentmanager.data.SettingsManager
+import com.example.appointmentmanager.data.formatContactDisplay
+import com.example.appointmentmanager.data.getContactName
 import com.example.appointmentmanager.ui.theme.AppointmentManagerTheme
 import com.example.appointmentmanager.ui.theme.GaretFontFamily
 import com.example.appointmentmanager.viewModel.CallViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -103,11 +120,12 @@ class MainActivity : ComponentActivity() {
     private val requiredPermissions: Array<String>
         get(){
             val permissions = mutableListOf(
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.ANSWER_PHONE_CALLS,
-            Manifest.permission.READ_PHONE_NUMBERS,
-            Manifest.permission.SEND_SMS,
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.READ_CALL_LOG,
+                Manifest.permission.ANSWER_PHONE_CALLS,
+                Manifest.permission.READ_PHONE_NUMBERS,
+                Manifest.permission.SEND_SMS,
+                Manifest.permission.READ_CONTACTS
         )
 
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU){
@@ -174,7 +192,8 @@ class MainActivity : ComponentActivity() {
         //create database instance
         val database = AppDatabase.getDatabase(applicationContext)
         //create repo
-        val repository = CallRepository(database.callDao())
+        val settingsManager = SettingsManager(applicationContext)
+        val repository = CallRepository(database.callDao(), settingsManager)
         //create viewmodel
         viewModel = CallViewModel(repository)
 
@@ -211,19 +230,30 @@ class MainActivity : ComponentActivity() {
                     ) { innerPadding ->
 
 
-                    //showing call history screen
-                    Column(modifier = Modifier.padding(innerPadding)
-                    ){
+                    //showing call history screen (animation)
+                    Crossfade(
+                        targetState = selectedTab,
+                        modifier = Modifier
+                            .fillMaxSize(),
+                        animationSpec = tween(durationMillis = 100),
+                        label = "tab_crossfade"
+                    )
+                    { targetTab ->
 
-                        // NEW: Add test controls at the top
-                        when(selectedTab){
-                            0 -> {
-                                //History Tab
-                                CallHistoryScreen(callRecord = viewModel.calls)
-                            }
-                            1 -> {
-                                //Schedule Tab
-                                ScheduleScreen(viewModel = viewModel)
+                        Column(
+                            modifier = Modifier.padding(innerPadding)
+                        ) {
+
+                            when (targetTab) {
+                                0 -> {
+                                    //History Tab
+                                    CallHistoryScreen(callRecord = viewModel.calls)
+                                }
+
+                                1 -> {
+                                    //Schedule Tab
+                                    ScheduleScreen(viewModel = viewModel)
+                                }
                             }
                         }
                     }
@@ -246,7 +276,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-
 //PERMISSIONS
 //for rationale dialog
 @Composable
@@ -260,7 +289,9 @@ fun RationaleDialog(
         text = {Text("This app needs permissions to:\n" +
                 "• Answer calls automatically\n" +
                 "• Send SMS appointment confirmations\n" +
-                "• Show service status in notifications")},
+                "• Show service status in notifications\n" +
+                "• Display contact names for saved numbers"
+        )},
         confirmButton = {
             TextButton(onClick = onConfirm){
                 Text("Grant")
@@ -532,8 +563,15 @@ fun GroupedCallHistoryItem(groupedCall: GroupedCall){
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ){
+
+                    val context = LocalContext.current
+                    val displayName = remember(groupedCall.phoneNumber){
+                        getContactName(context, groupedCall.phoneNumber)?:
+                        groupedCall.phoneNumber
+                    }
+
                     Text(
-                        text = groupedCall.phoneNumber,
+                        text = displayName,
                         style = MaterialTheme.typography.titleMedium,
                         fontFamily = GaretFontFamily,
                         fontWeight = FontWeight.Bold
@@ -624,41 +662,66 @@ fun GroupedCallHistoryItem(groupedCall: GroupedCall){
 
 //Main Schedule Screen
 @Composable
-fun ScheduleScreen(viewModel: CallViewModel){
+fun ScheduleScreen(viewModel: CallViewModel) {
     val slots by viewModel.appointmentSlots.collectAsState(initial = emptyList())
-
-    //Collect the selected date
     val selectedDate by viewModel.selectedDate.collectAsState()
+    val errorMessage by viewModel.capacityError.collectAsState()
 
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ){
+    // Settings dialog state
+    var showSettingsDialog by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
         ScheduleHeader(
             date = selectedDate,
-            onPreviousDay = { viewModel.previousDay()},
-            onNextDay = { viewModel.nextDay()},
-            onToday = {viewModel.goToToday()},
-            onTomorrow = {viewModel.goToTomorrow()}
+            onPreviousDay = { viewModel.previousDay() },
+            onNextDay = { viewModel.nextDay() },
+            onToday = { viewModel.goToToday() },
+            onTomorrow = { viewModel.goToTomorrow() },
+            onOpenSettings = { showSettingsDialog = true }
         )
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
-        ){
-            items(slots) {slot ->
+        ) {
+            items(slots) { slot ->
                 AppointmentSlotCard(
                     slot = slot,
                     selectedDate = selectedDate,
                     onDeleteAppointment = { phoneNumber ->
                         viewModel.deleteAppointment(phoneNumber, selectedDate)
-
-                    }
+                    },
+                    viewModel = viewModel
                 )
             }
         }
     }
+
+    // Error dialog
+    if (errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearCapacityError() },
+            title = { Text("Cannot Update Capacity") },
+            text = { Text(errorMessage!!) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearCapacityError() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    // Settings dialog
+    if (showSettingsDialog) {
+        SettingsDialog(
+            viewModel = viewModel,
+            selectedDate = selectedDate,
+            onDismiss = { showSettingsDialog = false }
+        )
+    }
 }
+
 
 @Composable
 fun ScheduleHeader(
@@ -666,8 +729,11 @@ fun ScheduleHeader(
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
     onToday: () -> Unit,
-    onTomorrow: () -> Unit
+    onTomorrow: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
+
+    val isDarkMode = isSystemInDarkTheme()
 
     Column(
         modifier = Modifier
@@ -675,12 +741,38 @@ fun ScheduleHeader(
             .padding(horizontal = 16.dp)
             .padding(top = 20.dp, bottom = 10.dp)
     ) {
-        Text(
-            text = "Schedule",
-            style = MaterialTheme.typography.headlineMedium,
-            fontFamily = GaretFontFamily,
-            fontWeight = FontWeight.Bold
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         )
+        {
+            Text(
+                text = "Schedule",
+                style = MaterialTheme.typography.headlineMedium,
+                fontFamily = GaretFontFamily,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Settings button
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isDarkMode) Color(0xFF2C2C2C) else Color.LightGray
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings"
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -714,25 +806,28 @@ fun ScheduleHeader(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ){
-            TextButton(
-                onClick = onToday,
-                modifier = Modifier.weight(1f)
-            ){
-                Text("Today")
-            }
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextButton(
+                    onClick = onToday,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Today")
+                }
 
-            TextButton(
-                onClick = onTomorrow,
-                modifier = Modifier.weight(1f)
-            ){
-                Text("Tomorrow")
+                TextButton(
+                    onClick = onTomorrow,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Tomorrow")
+                }
             }
         }
-
-
-
     }
 }
 
@@ -740,7 +835,8 @@ fun ScheduleHeader(
 fun AppointmentSlotCard(
     slot: AppointmentSlot,
     selectedDate: String,
-    onDeleteAppointment: (String) -> Unit
+    onDeleteAppointment: (String) -> Unit,
+    viewModel: CallViewModel
 ) {
     var isExpanded by remember { mutableStateOf(false) }
 
@@ -748,6 +844,9 @@ fun AppointmentSlotCard(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var phoneToDelete by remember { mutableStateOf("") }
 
+    //Edit capacity dialog state
+    var showEditCapacityDialog by remember { mutableStateOf(false) }
+    var newCapacityInput by remember { mutableStateOf(slot.capacity.toString()) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -771,16 +870,32 @@ fun AppointmentSlotCard(
                     fontWeight = FontWeight.Bold
                 )
 
-                Text(
-                    text = "${slot.count}/${slot.capacity}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = when {
-                        slot.isFull -> Color(0xFFE53935)      // Red if full
-                        slot.isEmpty -> Color.Gray             // Gray if empty
-                        else -> Color(0xFF4CAF50)              // Green otherwise
-                    },
-                    fontWeight = FontWeight.Bold
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            showEditCapacityDialog = true
+                        }
+                        .background(
+                            when {
+                                slot.isFull -> Color(0xFFE53935).copy(alpha = 0.1f)
+                                slot.isEmpty -> Color.Gray.copy(alpha = 0.1f)
+                                else -> Color(0xFF4CAF50).copy(alpha = 0.1f)
+                            }
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ){
+                    Text(
+                        text = "${slot.count}/${slot.capacity}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = when {
+                            slot.isFull -> Color(0xFFE53935)      // Red if full
+                            slot.isEmpty -> Color.Gray             // Gray if empty
+                            else -> Color(0xFF4CAF50)              // Green otherwise
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -828,8 +943,16 @@ fun AppointmentSlotCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+
+                            //Phone number with contact name is available
+                            val context = LocalContext.current
+                            val displayText = remember(phoneNumber){
+                                formatContactDisplay(context, phoneNumber)
+                            }
+
+
                             Text(
-                                text = phoneNumber,
+                                text = displayText,
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
@@ -896,11 +1019,183 @@ fun AppointmentSlotCard(
         )
     }
 
+    // Edit capacity dialog
+    if (showEditCapacityDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showEditCapacityDialog = false
+                newCapacityInput = slot.capacity.toString() // Reset input
+            },
+            title = { Text(
+                text = "Edit Capacity: ${slot.slotTime}",
+                style = MaterialTheme.typography.titleLarge,
+                fontFamily = GaretFontFamily,
+                fontWeight = FontWeight.Bold
+            ) },
+            text = {
+                Column {
+                    Text(
+                        text = "Current: ${slot.count}/${slot.capacity}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = newCapacityInput,
+                        onValueChange = { newCapacityInput = it },
+                        label = { Text("New Capacity") },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+
+
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val capacity = newCapacityInput.toIntOrNull()
+                        if (capacity != null && capacity > 0) {
+                            viewModel.updateSlotCapacity(slot.slotTime, capacity)
+                            showEditCapacityDialog = false
+                        }
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            viewModel.resetSlotCapacity(slot.slotTime)
+                            showEditCapacityDialog = false
+                        }
+                    ) {
+                        Text("Reset to Default")
+                    }
+
+                    TextButton(
+                        onClick = {
+                            showEditCapacityDialog = false
+                            newCapacityInput = slot.capacity.toString()
+                        }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
 }
 
 
+@Composable
+fun SettingsDialog(
+    viewModel: CallViewModel,
+    selectedDate: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val settingsManager = remember { SettingsManager(context) }
+    val coroutineScope = rememberCoroutineScope()
 
+    // REACTIVE: Automatically updates when DataStore changes!
+    val defaultCapacity by settingsManager.defaultCapacityFlow
+        .collectAsState(initial = 2)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                "Slot Capacity Settings",
+                style = MaterialTheme.typography.headlineSmall,
+                fontFamily = GaretFontFamily
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Section 1: Default Capacity
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                "Set Default Capacity",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Default: $defaultCapacity",
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                if (defaultCapacity > 1) {
+                                                    settingsManager.setDefaultCapacity(defaultCapacity - 1)
+                                                }
+                                            }
+                                        },
+                                        enabled = defaultCapacity > 1
+                                    ) {
+                                        Icon(Icons.Default.Remove, "Decrease")
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                if (defaultCapacity < 20) {
+                                                    settingsManager.setDefaultCapacity(defaultCapacity + 1)
+                                                }
+                                            }
+                                        },
+                                        enabled = defaultCapacity < 20
+                                    ) {
+                                        Icon(Icons.Default.Add, "Increase")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
+}
 
 
 fun formatTimestamp(timestamp: Long) : String{
@@ -912,7 +1207,6 @@ fun getDateString(timestamp: Long):String {
     val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
     return sdf.format(Date(timestamp))
 }
-
 
 fun groupCallsByNumber(calls: List<CallRecord>): Map<String, List<GroupedCall>>{
     return calls
@@ -933,9 +1227,6 @@ fun groupCallsByNumber(calls: List<CallRecord>): Map<String, List<GroupedCall>>{
                 .sortedByDescending { it.lastCallTime }
         }
 }
-
-
-
 
 fun getSampleCallRecords(): List<CallRecord> {
     val now = System.currentTimeMillis()
@@ -1011,7 +1302,8 @@ fun getNextWorkingDay(currentTimestamp: Long): Pair<Long, String>{
 suspend fun assignAppointmentSlot(
     phoneNumber: String,
     callTimestamp: Long,
-    repository: CallRepository
+    repository: CallRepository,
+    context: android.content.Context
 ): Pair<String, String>{
 
     val (workingDayTimestamp, workingDayDate) = getNextWorkingDay(callTimestamp)
@@ -1028,6 +1320,11 @@ suspend fun assignAppointmentSlot(
         Log.d("AutoBook", "✓ Existing slot found for $phoneNumber on $workingDayDate: $existingSlot")
         return Pair(workingDayDate, existingSlot)
     }
+
+    // Get all slot configurations
+    val allConfigurations = repository.getAllSlotConfigurationsSync()
+    val settingsManager = SettingsManager(context)
+    val defaultCapacity = settingsManager.getDefaultCapacity()
 
     //slots
     val availableSlots = listOf(
@@ -1046,10 +1343,17 @@ suspend fun assignAppointmentSlot(
             .distinct()                   // Get unique numbers only
             .size                         // Count unique numbers
 
-        if (countInSlot < 5) {
-            Log.d("AutoBook", "✓ Assigned $phoneNumber to $workingDayDate at $slot (${countInSlot + 1}/5)")
+
+        val capacity = allConfigurations
+            .find {it.slotTime == slot}
+            ?.capacity ?: defaultCapacity
+
+        if (countInSlot < capacity) {
+            Log.d("AutoBook", "✓ Assigned $phoneNumber to $workingDayDate at $slot (${countInSlot + 1}/$capacity)")
             return Pair(workingDayDate, slot)
         }
+
+        Log.d("AutoBook", "⚠ Slot $slot is full ($countInSlot/$capacity)")
     }
 
 

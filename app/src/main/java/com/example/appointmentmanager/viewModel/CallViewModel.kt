@@ -5,11 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.appointmentmanager.data.AppointmentSlot
 import com.example.appointmentmanager.data.CallRecord
 import com.example.appointmentmanager.data.CallRepository
+import com.example.appointmentmanager.data.SlotConfiguration
 import com.example.appointmentmanager.getNextWorkingDay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -120,5 +122,69 @@ class CallViewModel(private var repository: CallRepository) : ViewModel() {
         }
     }
 
+
+
+    //FOR SLOT CONFIGURATION
+
+    //Get capacity for specific slot
+    fun getSlotCapacity(slotTime: String): Flow<Int> {
+        return repository.getSlotCapacity(slotTime)
+    }
+
+    //Get all slot configurations
+    fun getAllSlotConfigurations(): Flow<List<SlotConfiguration>> {
+        return repository.getAllSlotConfigurations()
+    }
+
+
+    ///update capacity for a slot with validation
+    fun updateSlotCapacity(slotTime: String, newCapacity: Int) {
+        viewModelScope.launch {
+            val result = repository.updateSlotCapacity(
+                slotTime = slotTime,
+                newCapacity = newCapacity,
+                date = _selectedDate.value
+            )
+
+            if (result.isFailure) {
+                // Emit error message for UI to display
+                _capacityError.value = result.exceptionOrNull()?.message
+            } else {
+                _capacityError.value = null
+            }
+        }
+    }
+
+    //Reset slot to default capacity: 2
+    fun resetSlotCapacity(slotTime: String) {
+        viewModelScope.launch {
+
+            //Validation before we set default value to 5
+            val validationResult = repository.validateCapacityChange(
+                slotTime = slotTime,
+                newCapacity = 2,
+                date = _selectedDate.value
+            )
+
+            if (validationResult.isFailure){
+                //Can't rest, show error
+                _capacityError.value = validationResult.exceptionOrNull()?.message
+            }
+            else{
+                //Can reset - delete config and revert to default
+                repository.resetSlotCapacity(slotTime)
+                _capacityError.value = null
+            }
+        }
+    }
+
+    // State for capacity error messages
+    private val _capacityError = MutableStateFlow<String?>(null)
+    val capacityError: StateFlow<String?> = _capacityError.asStateFlow()
+
+    //Clear capacity error message
+    fun clearCapacityError() {
+        _capacityError.value = null
+    }
 
 }

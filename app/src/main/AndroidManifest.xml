@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <!-- SMS permission (Dangerous - need runtime request) -->
     <uses-permission android:name="android.permission.SEND_SMS" />
